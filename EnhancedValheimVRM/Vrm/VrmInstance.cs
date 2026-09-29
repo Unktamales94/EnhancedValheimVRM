@@ -513,8 +513,14 @@ namespace EnhancedValheimVRM
 
             foreach (var mat in materials)
             {
-                if (lifetime == null) yield break;
-                if (mat == null) continue;
+                if (lifetime == null)
+                    yield break;
+                if (mat == null)
+                    continue;
+
+                // Check if the material is Hair
+                bool isHair = mat.name.IndexOf("hair", StringComparison.OrdinalIgnoreCase) >= 0;
+
                 if (settings.UseMToonShader && !settings.AttemptTextureFix && mat.HasProperty("_Color"))
                 {
                     var color = mat.GetColor("_Color");
@@ -523,7 +529,8 @@ namespace EnhancedValheimVRM
                     color.b *= settings.ModelBrightness;
                     mat.SetColor("_Color", color);
                 }
-                else if (settings.AttemptTextureFix)
+                // Skip Texture Fix if this is a Hair material to keep its original MToon setup intact
+                else if (settings.AttemptTextureFix && !isHair)
                 {
                     if (mat.shader != foundShader)
                     {
@@ -569,11 +576,13 @@ namespace EnhancedValheimVRM
                                 }
                             });
 
-                            while (!pixelsTask.IsCompleted) yield return new WaitUntil(() => pixelsTask.IsCompleted);
+                            while (!pixelsTask.IsCompleted)
+                                yield return new WaitUntil(() => pixelsTask.IsCompleted);
 
                             pixelsTask.GetAwaiter().GetResult(); // Already completed above.
 
-                            if (lifetime == null || tex == null || mat == null) yield break;
+                            if (lifetime == null || tex == null || mat == null)
+                                yield break;
                             slice.Restart();
                             sliceBudgetMs = PersistentImportAwaitCaller.SpareFrameMs();
                             for (int y = 0, stripe = 0; y < height; y += rows, stripe++)
@@ -592,7 +601,6 @@ namespace EnhancedValheimVRM
 
                         var bumpMap = mat.HasProperty("_BumpMap") ? mat.GetTexture("_BumpMap") : null;
                         mat.shader = foundShader;
-
                         if (foundShader == creatureShader)
                         {
                             mat.SetTexture("_MainTex", tex);
@@ -601,9 +609,26 @@ namespace EnhancedValheimVRM
                             mat.SetFloat("_Glossiness", 0.2f);
                             mat.SetFloat("_Metallic", 0f);
                             mat.SetFloat("_MetalGloss", 0f);
-                            // The avatar's own colors glow at the configured strength.
                             mat.SetTexture("_EmissionMap", tex);
                             mat.SetColor("_EmissionColor", Color.white * settings.TextureFixEmission);
+
+                            // --- APPLY CUTOUT ONLY TO HAIR ---
+                            if (isHair)
+                            {
+                                mat.SetFloat("_UseAlphaTest", 1f);
+                                mat.EnableKeyword("_ALPHATEST_ON");
+                                mat.SetFloat("_Cutoff", 0.1f);
+                                mat.SetOverrideTag("RenderType", "TransparentCutout");
+                                mat.renderQueue = (int)UnityEngine.Rendering    .RenderQueue.AlphaTest;
+                            }
+                            else
+                            {
+                                // Explicitly disable alpha testing for body/skin materials
+                                mat.SetFloat("_UseAlphaTest", 0f);
+                                mat.DisableKeyword("_ALPHATEST_ON");
+                                mat.SetOverrideTag("RenderType", "Opaque");
+                                mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Geometry;
+                            }
                         }
                         else
                         {
@@ -614,8 +639,17 @@ namespace EnhancedValheimVRM
                             mat.SetTexture("_ChestBumpMap", bumpMap);
                             mat.SetTexture("_LegsTex", tex);
                             mat.SetTexture("_LegsBumpMap", bumpMap);
-                            mat.SetFloat("_Glossiness", 0.2f);
+                            mat.SetFloat("_Glossiness", 0.0f);
                             mat.SetFloat("_MetalGlossiness", 0.0f);
+
+                            // Enable alpha test for Player shader if material is hair
+                            if (isHair)
+                            {
+                                mat.EnableKeyword("_ALPHATEST_ON");
+                                mat.SetFloat("_Cutoff", 0.01f);
+                                mat.SetOverrideTag("RenderType", "TransparentCutout");
+                                mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
+                            }
                         }
                     }
                 }

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UniGLTF;
 using UniVRM10;
@@ -29,12 +30,27 @@ namespace EnhancedValheimVRM
 
         public MaterialDescriptor Get(GltfData data, int i)
         {
-            return WithoutMergedMap(_inner.Get(data, i));
+            var descriptor = _inner.Get(data, i);
+
+            // Skip texture fix modifications if the material name contains "hair"
+            if (!string.IsNullOrEmpty(descriptor.Name) && descriptor.Name.IndexOf("hair", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return descriptor;
+            }
+
+            return WithoutMergedMap(descriptor);
         }
 
         public MaterialDescriptor GetGltfDefault(string materialName = null)
         {
-            return WithoutMergedMap(_inner.GetGltfDefault(materialName));
+            var descriptor = _inner.GetGltfDefault(materialName);
+
+            if (!string.IsNullOrEmpty(descriptor.Name) && descriptor.Name.IndexOf("hair", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return descriptor;
+            }
+
+            return WithoutMergedMap(descriptor);
         }
 
         private static MaterialDescriptor WithoutMergedMap(MaterialDescriptor source)
@@ -49,7 +65,8 @@ namespace EnhancedValheimVRM
                     slots[pair.Key] = pair.Value;
             }
 
-            if (!dropped) return source;
+            if (!dropped)
+                return source;
             return new MaterialDescriptor(source.Name,
                 source.Shader,
                 source.RenderQueue,
